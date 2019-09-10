@@ -1,17 +1,24 @@
 extensions [
   csv
   table
+  rnd             ;;random (created by Nicholas)
+  nw
 ]
 
 globals [
   villages
+  distances
 ]
 
 breed [ muslims muslim ]
 breed [ hindi a-hindu ]
 
+directed-link-breed [ sim-diffusions sim-diffusion ]
+undirected-link-breed [ relatives relative ]   ;;kinship network (family relation)
+directed-link-breed [ diffusions diffusion ]   ;;diffusion network also in the file
+
 turtles-own [
-  ;;;;values need to be assigned to turtles, put into attributes
+  ;;;;FROM EMPIRICAL DATA: values need to be assigned to turtles, put into attributes
   ;; adoption is the date when an agent adopted the technology (corresponds to ticks)
   adoption
   ;; name of the village where the agent resides
@@ -22,6 +29,14 @@ turtles-own [
   threshold
   ;; represents if the agent went ot the source of innovation
   visited?
+
+  ;;;;NOT FROM EMPIRICAL DATA:
+  ;; signals what happens in simulated context
+  sim-adoption
+  sim-adopted?
+
+  ;;;; value from 0.99 to smaller value - represents a probability of being picked
+  spatial-property
 ]
 
 patches-own [
@@ -30,13 +45,40 @@ patches-own [
 
 to setup
   clear-all
+  random-seed behaviorspace-run-number
   calibrate-world-and-agents
   reset-ticks
+  ask turtles with [ adoption = 0 ] [ signal-adoption ]
+end
+
+to signal-adoption
+  set size 2
+  set color red
+  set sim-adoption ticks
+  set sim-adopted? true
 end
 
 to calibrate-world-and-agents
   create-villages
+  calibrate-distances
   calibrate-agents
+end
+
+to calibrate-distances
+  set distances table:make                          ;for when you need a key value pair (here it is empty) as the key you should put the names of the villages
+  let dist-lists (csv:from-file "data/distances.csv")
+  foreach villages [ from ->
+    let from-dist table:make
+    let from-to-distances butfirst item 0 filter [ id -> item 0 id = from ] dist-lists         ;putting the rows in from-to-dist without the first row (the header, basically)
+    foreach villages [ where-to ->
+      table:put from-dist where-to item (position where-to villages) from-to-distances
+    ]
+    table:put distances from from-dist
+  ]
+end
+
+to-report get-distances [ where-to where-from ]           ;whereto and wherefrom are keys (where-to is the large one, where-from will select one element out of the list)
+  report table:get ( table:get distances where-from ) where-to
 end
 
 to create-villages
@@ -75,6 +117,17 @@ to calibrate-agents
       set adoption item 3 row
       set visited? item 4 row
       set threshold item 5 row
+      set sim-adopted? false
+    ]
+  ]
+  let agents-by-name table:group-agents turtles [ name ]
+  foreach but-first (csv:from-file "data/edges.csv" ";") [ row ->
+    ask table:get agents-by-name item 0 row [
+      let target-agents table:get agents-by-name item 1 row
+      (ifelse                                                                                   ;;ifelse with two conditions - this is just several ifs behind one another, the second will only be checked if the first one is false
+        item 2 row = "diffusions" [ create-diffusions-to target-agents [ set color red ] ]
+        item 2 row = "relatives" [ create-relatives-with target-agents [ set color green ] ]
+      )
     ]
   ]
   layout-turtles-in-villages
@@ -102,7 +155,64 @@ to layout-turtles-in-villages
 end
 
 to go
+  if ticks = 53 [                   ;there are 54 timesteps including 0
+    stop
+  ]
+  ask turtles with [ visited? ] [ if ticks = adoption [ signal-adoption ] ]            ;turtles that went to centre of innovation: adoption happened without relation to what happens in villages and they will influence further
+  if mechanism = "random" [ at-random ]
+  if mechanism = "spatial" [ spatial ]
+  if mechanism = "relational" [ relational ]
   tick
+end
+
+to adopt
+  if not sim-adopted? [
+    signal-adoption
+    create-sim-diffusion-from myself [ set color cyan ]
+  ]
+end
+
+to relational
+  let adopters turtles with [ sim-adopted? ]
+  ask n-of (count adopters / 3) adopters [
+    let candidates other turtles with [ breed = [ breed ] of myself ]
+    ask candidates [
+      let dist nw:distance-to myself
+      set spatial-property ifelse-value dist = false [ 0.0000000001 ] [ 1 / (dist ^ 2) ]
+    ]
+    let winner rnd:weighted-one-of candidates [ spatial-property ]
+    ask winner [ adopt ]
+  ]
+end
+
+to spatial
+  let adopters turtles with [ sim-adopted? ]
+  ask n-of (count adopters / 2) adopters [
+    let candidates other turtles with [ breed = [ breed ] of myself ]
+    ask candidates [
+      let dist get-distances village [ village ] of myself
+      ifelse dist = 0
+      [ set spatial-property 0.99 ]                    ; if in same village, probability is high to be picked
+      [ set spatial-property 1 / (dist ^ 2)]           ; hagerstrand equation
+    ]
+    let winner rnd:weighted-one-of candidates [ spatial-property ]
+    ask winner [ adopt ]
+  ]
+end
+
+to at-random
+  let adopters turtles with [sim-adopted?]
+  ask n-of (count adopters / 2) adopters [
+    ask one-of other turtles with [ breed = [breed] of myself ] [ adopt ]
+  ]
+end
+
+to-report adoption-% [ agentset ]                                                  ; input are the agentsets: use it by writing adoption-% muslims or adoption-% hindi
+  report count agentset with [ sim-adoption > 0 ]   / count agentset * 100         ;sim-adoption this is zero when initialised and grows after adoption
+end
+
+to-report timed-accuracy [ agentset ]
+  report mean [ abs (adoption - sim-adoption) ] of agentset
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -226,6 +336,76 @@ length villages
 17
 1
 11
+
+PLOT
+5
+140
+250
+315
+Muslim potters adoption percentage
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"foreach range 54 [ t -> \n plotxy t (count muslims with [ adoption <= t ] / count muslims * 100)\n]" ""
+PENS
+"empirical" 1.0 0 -2674135 true "" ""
+"simulated" 1.0 0 -16777216 true "" "plotxy ticks adoption-% muslims"
+
+PLOT
+5
+320
+250
+495
+Hindi potters adoption percentage
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+false
+"foreach range 54 [ t -> \n plotxy t (count hindi with [ adoption <= t ] / count hindi * 100)\n]" ""
+PENS
+"empirical" 1.0 0 -14070903 true "" ""
+"simulated" 1.0 0 -16777216 true "" "plotxy ticks adoption-% hindi"
+
+MONITOR
+260
+140
+402
+185
+NIL
+timed-accuracy muslims
+17
+1
+11
+
+MONITOR
+262
+320
+397
+365
+NIL
+timed-accuracy hindi
+17
+1
+11
+
+CHOOSER
+230
+10
+368
+55
+mechanism
+mechanism
+"random" "spatial" "relational"
+2
 
 @#$#@#$#@
 ## WHAT IS IT?

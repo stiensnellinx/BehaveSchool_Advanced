@@ -81,9 +81,24 @@ to-report get-distances [ where-to where-from ]           ;whereto and wherefrom
   report table:get ( table:get distances where-from ) where-to
 end
 
+to test-get-distances
+  clear-all
+  create-villages
+  calibrate-distances
+  let result get-distances "VILLAGE A" "VILLAGE B"
+  if result != 8 [ error (word "Expected 8 but got" result)]
+  set result get-distances "VILLAGE B" "VILLAGE A"
+  if result != 8 [ error (word "Expected 8 but got" result)]
+end
+
 to create-villages
   let village-colors [ 4 14 24 34 44 54 64 74 84 94 104 114 124 134 13 23 33 43 ]
-  set villages [ "VILLAGE A" "VILLAGE B" "VILLAGE C" "VILLAGE D" "VILLAGE E" "VILLAGE F" "VILLAGE G" "VILLAGE H" "VILLAGE I" "VILLAGE L" "VILLAGE M" "VILLAGE N" "VILLAGE O" "VILLAGE P" "VILLAGE Q" "VILLAGE R" "VILLAGE S" "VILLAGE T" ]
+  set villages [ "VILLAGE A" "VILLAGE B" "VILLAGE C"
+                 "VILLAGE D" "VILLAGE E" "VILLAGE F"
+                 "VILLAGE G" "VILLAGE H" "VILLAGE I"
+                 "VILLAGE L" "VILLAGE M" "VILLAGE N"
+                 "VILLAGE O" "VILLAGE P" "VILLAGE Q"
+                 "VILLAGE R" "VILLAGE S" "VILLAGE T" ]
   let counter 0
   foreach (range 0 84 14) [ xcor-val ->
     foreach (range 0 30 14) [ ycor-val ->
@@ -211,8 +226,51 @@ to-report adoption-% [ agentset ]                                               
   report count agentset with [ sim-adoption > 0 ]   / count agentset * 100         ;sim-adoption this is zero when initialised and grows after adoption
 end
 
+to test-adoption-%
+  clear-all
+  create-hindi 10
+  if adoption-% hindi != 0 [ error (word "expected 0 but got " adoption-% hindi) ]
+  ask n-of 5 hindi [ set sim-adoption 1 + random 10 ]
+  if adoption-% hindi != 50 [ error (word "expected 50 but got " adoption-% hindi) ]
+  ask hindi [ set sim-adoption 1 + 1000 ]
+  if adoption-% hindi != 100 [ error (word "expected 100 but got " adoption-% hindi) ]
+end
+
 to-report timed-accuracy [ agentset ]
   report mean [ abs (adoption - sim-adoption) ] of agentset
+end
+
+
+;;unit tests
+
+to test
+  setup
+
+  ;print length villages = 18          ;this should print true
+
+  if length villages != 18 [
+    error (word "Expected 18 villages but got " length villages)
+  ]
+
+  if count muslims != 193 [
+    error (word "Expected 193 muslims but got " count muslims)
+  ]
+
+  if adoption-% muslims != 0 [ error "wrong adoption %" ]
+
+  test-adoption-%
+  test-get-distances
+  test-go
+
+  print "Congrats! You didn't fuck up!"
+
+end
+
+to test-go
+  setup
+  repeat 20 [ go ]
+  if adoption-% muslims <= 0 [ error "no muslims are adopting"]
+  if adoption-% hindi <= 0 [ error "no muslims are adopting"]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW

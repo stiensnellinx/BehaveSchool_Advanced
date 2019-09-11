@@ -89,6 +89,22 @@ to test-get-distances
   if result != 8 [ error (word "Expected 8 but got" result)]
   set result get-distances "VILLAGE B" "VILLAGE A"
   if result != 8 [ error (word "Expected 8 but got" result)]
+
+  foreach villages [ source ->
+    foreach villages [ destination ->
+      ifelse source = destination [
+        if get-distances source destination != 0 [error (word "Expected 0 but got " get-distances source destination)]
+      ] [
+        let result1 get-distances source destination
+        let result2 get-distances destination source
+        if result1 != result2 [error
+          (word "distance from " source " to " destination
+            " is different from its reverse")
+        ]
+      ]
+    ]
+  ]
+
 end
 
 to create-villages
